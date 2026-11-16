@@ -1,68 +1,55 @@
 package com.example.crudoperation.controller;
 
-
+import java.net.URI;
 import java.util.List;
-import java.util.Optional;
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.*;
-
 import com.example.crudoperation.entity.Student;
-import com.example.crudoperation.repository.StudentRepository;
+import com.example.crudoperation.service.StudentService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Positive;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/students")
 public class StudentController {
+    private final StudentService service;
 
-    @Autowired
-    private StudentRepository repository;
-
+    public StudentController(StudentService service) {
+        this.service = service;
+    }
 
     @PostMapping
-    public Student createStudent(@RequestBody Student student) {
-        return repository.save(student);
+    public ResponseEntity<Student> create(@Valid @RequestBody StudentRequest request) {
+        Student saved = service.saveStudent(request.toStudent());
+        return ResponseEntity.created(URI.create("/students/" + saved.getId())).body(saved);
     }
-
 
     @GetMapping
-    public List<Student> getAllStudents() {
-        return repository.findAll();
+    public List<Student> findAll() {
+        return service.getAllStudents();
     }
-
 
     @GetMapping("/{id}")
-    public Optional<Student> getStudentById(
-            @PathVariable Long id) {
-        return repository.findById(id);
+    public Student findById(@PathVariable @Positive Long id) {
+        return service.getStudentById(id);
     }
-
 
     @PutMapping("/{id}")
-    public Student updateStudent(
-            @PathVariable Long id,
-            @RequestBody Student student) {
-
-        Student existingStudent = repository.findById(id)
-                .orElseThrow(() ->
-                        new RuntimeException("Student not found"));
-
-        existingStudent.setName(student.getName());
-        existingStudent.setEmail(student.getEmail());
-        existingStudent.setCourse(student.getCourse());
-
-        return repository.save(existingStudent);
+    public Student update(@PathVariable @Positive Long id,
+                          @Valid @RequestBody StudentRequest request) {
+        return service.updateStudent(id, request.toStudent());
     }
 
-
     @DeleteMapping("/{id}")
-    public String deleteStudent(@PathVariable Long id) {
-
-        if (!repository.existsById(id)) {
-            return "Student not found";
-        }
-
-        repository.deleteById(id);
-
-        return "Student deleted successfully";
+    public ResponseEntity<Void> delete(@PathVariable @Positive Long id) {
+        service.deleteStudent(id);
+        return ResponseEntity.noContent().build();
     }
 }
