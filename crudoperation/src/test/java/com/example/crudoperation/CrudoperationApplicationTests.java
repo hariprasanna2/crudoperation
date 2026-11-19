@@ -10,6 +10,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import com.jayway.jsonpath.JsonPath;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -25,47 +28,57 @@ class CrudoperationApplicationTests {
             {"name":"Hari Prasanna","email":"hari@example.com","course":"Java"}
             """;
 
+    private String token;
+
     @BeforeEach
-    void clearStudents() {
+    void clearStudents() throws Exception {
         repository.deleteAll();
+        String response = mvc.perform(post("/auth/login").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"test-admin\",\"password\":\"Admin-test-password-42\"}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        token = JsonPath.read(response, "$.accessToken");
+    }
+
+    private ResultActions perform(MockHttpServletRequestBuilder request) throws Exception {
+        return mvc.perform(request.header("Authorization", "Bearer " + token));
     }
 
     @Test
     void createsReadsUpdatesAndDeletesStudent() throws Exception {
-        String location = mvc.perform(post("/students")
+        String location = perform(post("/students")
                         .contentType(MediaType.APPLICATION_JSON).content(STUDENT))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").isNumber())
                 .andExpect(jsonPath("$.name").value("Hari Prasanna"))
                 .andReturn().getResponse().getHeader("Location");
         assertNotNull(location);
-        mvc.perform(get(location))
+        perform(get(location))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value("hari@example.com"));
-        mvc.perform(get("/students"))
+        perform(get("/students"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1));
-        mvc.perform(put(location).contentType(MediaType.APPLICATION_JSON).content("""
+        perform(put(location).contentType(MediaType.APPLICATION_JSON).content("""
                 {"name":"Hari Updated","email":"updated@example.com","course":"Spring"}
                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Hari Updated"))
                 .andExpect(jsonPath("$.course").value("Spring"));
-        mvc.perform(get(location))
+        perform(get(location))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value("updated@example.com"));
-        mvc.perform(delete(location)).andExpect(status().isNoContent());
-        mvc.perform(get(location)).andExpect(status().isNotFound());
+        perform(delete(location)).andExpect(status().isNoContent());
+        perform(get(location)).andExpect(status().isNotFound());
         assertEquals(0, repository.count());
     }
 
     @Test
     void returnsNotFoundForMissingStudents() throws Exception {
-        mvc.perform(get("/students/999999")).andExpect(status().isNotFound());
-        mvc.perform(put("/students/999999")
+        perform(get("/students/999999")).andExpect(status().isNotFound());
+        perform(put("/students/999999")
                         .contentType(MediaType.APPLICATION_JSON).content(STUDENT))
                 .andExpect(status().isNotFound());
-        mvc.perform(delete("/students/999999")).andExpect(status().isNotFound());
+        perform(delete("/students/999999")).andExpect(status().isNotFound());
     }
 
     @Test
@@ -76,7 +89,7 @@ class CrudoperationApplicationTests {
                 STUDENT.replace("hari@example.com", "not-an-email"),
                 STUDENT.replace("Java", ""),
                 STUDENT.replace("Hari Prasanna", "x".repeat(256))}) {
-            mvc.perform(post("/students").contentType(MediaType.APPLICATION_JSON).content(invalid))
+            perform(post("/students").contentType(MediaType.APPLICATION_JSON).content(invalid))
                     .andExpect(status().isBadRequest());
         }
         assertEquals(0, repository.count());
@@ -85,7 +98,7 @@ class CrudoperationApplicationTests {
     @Test
     void invalidUpdateLeavesExistingStudentUnchanged() throws Exception {
         Student saved = repository.save(new Student(null, "Hari", "hari@example.com", "Java"));
-        mvc.perform(put("/students/" + saved.getId())
+        perform(put("/students/" + saved.getId())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(STUDENT.replace("hari@example.com", "bad-email")))
                 .andExpect(status().isBadRequest());
@@ -96,13 +109,13 @@ class CrudoperationApplicationTests {
 
     @Test
     void rejectsMalformedJsonAndInvalidIds() throws Exception {
-        mvc.perform(post("/students").contentType(MediaType.APPLICATION_JSON).content("{broken"))
+        perform(post("/students").contentType(MediaType.APPLICATION_JSON).content("{broken"))
                 .andExpect(status().isBadRequest());
-        mvc.perform(get("/students/0")).andExpect(status().isBadRequest());
-        mvc.perform(get("/students/-1")).andExpect(status().isBadRequest());
-        mvc.perform(get("/students/not-a-number")).andExpect(status().isBadRequest());
-        mvc.perform(delete("/students/0")).andExpect(status().isBadRequest());
-        mvc.perform(put("/students/0").contentType(MediaType.APPLICATION_JSON).content(STUDENT))
+        perform(get("/students/0")).andExpect(status().isBadRequest());
+        perform(get("/students/-1")).andExpect(status().isBadRequest());
+        perform(get("/students/not-a-number")).andExpect(status().isBadRequest());
+        perform(delete("/students/0")).andExpect(status().isBadRequest());
+        perform(put("/students/0").contentType(MediaType.APPLICATION_JSON).content(STUDENT))
                 .andExpect(status().isBadRequest());
         assertEquals(0, repository.count());
     }
@@ -118,7 +131,7 @@ class CrudoperationApplicationTests {
 
     @Test
     void trimsNamesAndCourses() throws Exception {
-        mvc.perform(post("/students").contentType(MediaType.APPLICATION_JSON)
+        perform(post("/students").contentType(MediaType.APPLICATION_JSON)
                         .content(STUDENT.replace("Hari Prasanna", "  Hari Prasanna  ").replace("Java", " Java ")))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.name").value("Hari Prasanna"))
